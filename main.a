@@ -1,0 +1,167 @@
+; ACME 0.96.4
+;
+; 256 BYTES INTRO with MOCKINGBOARD SUPPORT - APPLE IIE/PAL
+;
+; GROUiK [FRENCH TOUCH]
+; 04/2021
+;
+; 0.10 - SIZE = $FD
+;
+
+!cpu 6502
+!convtab "a2txt.bin"
+!sl "lbl_main.txt"
+
+; =============================================================================
+KBD		= $C000
+RDVBL		= $C019
+; ROM routines
+HOME		= $FC58
+COUT		= $FDF0			; note: official add = $FDED
+CR		= $FC62			; perform a carriage return!
+; =============================================================================
+; PAGE ZERO
+OUT1		= $1C	; + $1D
+OUT2		= $1E	; + $1F
+; + use of $20,$21,$22,$23 
+
+; reuse of the same ZP addresses
+TEMP1		= $1D
+TEMP2		= $1E
+TEMP3		= $1F
+; =============================================================================
+
+    		*= $C00 	; ORG = $C00
+
+START
+!zone		
+		JSR HOME
+
+		; GEN REG TABLES
+		LDX #00
+MOD1		LDA DATA
+		STA TEMP3
+		ASL
+		STA TEMP1
+		LDA #00
+		ROL
+		STA TEMP2
+		LDY #08
+-		LDA TEMP1
+		STA $1000,X		; R0 (T1)
+		TYA
+		AND #01
+		PHP			; save z flag
+		BEQ +
+		LDA TEMP3
+		!byte $2C			; BIT abs opcode (6502 usual trick to skip 2 next bytes)
++		LDA TEMP1
+		STA $1100,X		; R0 (T2)
+		LDA TEMP2
+		STA $1200,X		; R1 (T1)
+		PLP			; restore z flag
+		BEQ +
+		LDA #00
+		!byte $2C			; (same as above)
++		LDA TEMP2
+		STA $1300,X		; R1 (T2)
+		INX
+		DEY
+		BNE -
+		INC MOD1+1
+		CPX #00
+		BNE MOD1
+_SIZE1_
+		; Y = 0 here
+		; INIT VAL (for MB + SCREEN "WINDOW")
+		LDX #07
+-		LDA VAR,X			
+		STA OUT1,X
+		DEX
+		BPL -	
+		JSR CR			; needed! 	
+		; INIT MB
+		LDX #$FF
+           	STX $C403          		
+            	LDA #$07
+            	STA $C402            	
+		; FILL STATIC REGISTERS (7/8)
+		; A = $07			; reg# = 7
+		LDX #$08			; reg value
+		JSR SET_REG
+		TXA			; reg# = 8
+		LDX #$0C			; reg value
+		JSR SET_REG	
+_SIZE2_
+MAIN_LOOP
+-		LDA RDVBL
+		BPL -
+-		LDA RDVBL
+		BMI -
+		
+		; MB "PLAYER"
+		LDA #$01			; reg# = 1
+MOD3		LDX $1200			; reg value
+		JSR SET_REG
+		LDA #$00			; reg# = 0
+MOD2		LDX $1000			; reg value
+		JSR SET_REG
+
+		INC MOD2+1
+		INC MOD3+1
+		BNE +
+		INC MOD2+2
+		INC MOD3+2
+		LDA MOD2+2
+		CMP #$12
+		BNE +
+		LDA #$11
+		STA MOD2+2
+		LDA #$13
+		STA MOD3+2
+		ROL MOD4+1		; (c=1)
+		BCC +
+		ROR MOD4+1 
+_SIZE3_
++		; DISPLAY PART
+		TXA			; REG#0 value
+		CMP #$A0
+		BEQ ++
+MOD4		CPX #$B0			; still REG#0 value...
+		BCS +
+		LDA #"^"
+		!byte $2C			; (again the same trick...)
++		LDA #"."
+++        	JSR COUT
+		
+		LDA KBD			; keyboard check
+		BPL MAIN_LOOP		
+		LDA #08			; REG 8 (volume) 
+		LDX #00			; = 0
+		; continue to SET_REG to stop MUSIC and back to DOS with the RTS
+		
+; =============================================================================
+SET_REG		; enter A (REG#) / X (REG value)
+		; Y = 0 here
+		STA (OUT1),Y					
+		LDA #$07			
+		STA (OUT2),Y		
+		LDA #$04			
+		STA (OUT2),Y
+		TXA
+		STA (OUT1),Y					
+		LDA #$06			
+		STA (OUT2),Y		
+		LDA #$04			
+		STA (OUT2),Y		
+		RTS
+; =============================================================================
+		; (R0/2) 
+DATA 		!byte	$BF,$7F,$5F,$BF,$7F,$5F,$BF,$7F,$BF,$7F,$50,$BF,$7F,$50,$BF,$50
+		!byte	$F0,$78,$5F,$F0,$78,$5F,$F0,$5F,$D6,$6B,$3F,$D6,$6B,$55,$D6,$55
+VAR		!byte 	$01,$C4,$00,$C4,10,20,01,23
+; =============================================================================
+;
+
+SiZE = * - START
+!if (SiZE >256) {!warn "Too large guy, keep trying!"} else {!warn SiZE}
